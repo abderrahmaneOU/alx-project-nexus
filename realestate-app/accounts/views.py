@@ -17,7 +17,11 @@ from .forms import UserProfileForm, EmailPreferencesForm, PrivacySettingsForm, S
 from properties.models import Property
 from messaging.models import PropertyInquiry
 from allauth.account.models import EmailAddress
-from allauth.account.utils import send_email_confirmation
+from allauth.account.utils import user_pk_to_url_str
+from allauth.account.models import EmailAddress
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
+from django.conf import settings
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -325,7 +329,31 @@ class ResendVerificationEmailView(LoginRequiredMixin, View):
             if email_address.verified:
                 messages.info(request, 'Your email is already verified.')
             else:
-                send_email_confirmation(request, request.user)
+                # Generate confirmation key
+                confirmation_key = user_pk_to_url_str(request.user)
+                
+                # Prepare email content
+                context = {
+                    'user': request.user,
+                    'confirmation_url': request.build_absolute_uri(
+                        f'/accounts/confirm-email/{confirmation_key}/'
+                    ),
+                    'site_name': 'Real Estate',
+                }
+                
+                # Render email content
+                subject = render_to_string('account/email/email_confirmation_subject.txt', context)
+                message = render_to_string('account/email/email_confirmation_message.txt', context)
+                
+                # Send verification email
+                send_mail(
+                    subject,
+                    message,
+                    settings.DEFAULT_FROM_EMAIL,
+                    [request.user.email],
+                    fail_silently=False,
+                )
+                
                 messages.success(request, 'Verification email has been sent.')
         except EmailAddress.DoesNotExist:
             # Create email address record if it doesn't exist
@@ -335,7 +363,28 @@ class ResendVerificationEmailView(LoginRequiredMixin, View):
                 primary=True,
                 verified=False
             )
-            send_email_confirmation(request, request.user)
+            
+            # Generate and send verification email (same as above)
+            confirmation_key = user_pk_to_url_str(request.user)
+            context = {
+                'user': request.user,
+                'confirmation_url': request.build_absolute_uri(
+                    f'/accounts/confirm-email/{confirmation_key}/'
+                ),
+                'site_name': 'Real Estate',
+            }
+            
+            subject = render_to_string('account/email/email_confirmation_subject.txt', context)
+            message = render_to_string('account/email/email_confirmation_message.txt', context)
+            
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [request.user.email],
+                fail_silently=False,
+            )
+            
             messages.success(request, 'Verification email has been sent.')
         
         return redirect('accounts:email_verification_sent')
